@@ -24,6 +24,7 @@ public class Receiver {
     public static byte[] symmetricBytes;
     public static PublicKey XpubKey;
     public static byte[] digSig;
+    public static byte[] digDigest;
 
 
     public static void main(String[] args) throws Exception {
@@ -39,18 +40,18 @@ public class Receiver {
         // Get output file name from user
         Scanner scan = new Scanner(System.in);
         String messageFile;
-        System.out.println("Input the name of the output message file: ");
+        System.out.println("Input the name of the message file: ");
         messageFile = scan.nextLine();
+        scan.close();
 
         // Step 4:
         // Read file and decrypt using symmetric key and AES decryption
-        byte[] decPlaintextBytes = aesDecrypt("message.aescipher");
+        aesDecrypt("message.aescipher");
 
         // Step 5:
         // Parse digital signature and message from decrypted file
         // Save message to user specified message file
-        byte[] digSig = parseDecryptedMsg(
-                "/Users/dominicklicciardi/Documents/Security_Projects/Project1/Sender/message.ds-msg", messageFile);
+        digSig = parseDecryptedMsg("message.ds-msg", messageFile);
         // Decrypt digital signature using X Public key with RSA
         rsaDecrypt(digSig);
 
@@ -59,12 +60,12 @@ public class Receiver {
         verifySha256(messageFile, "message.dd");
     }
 
-    static byte[] trim(byte[] bytes) {
-        int i = bytes.length - 1;
-        while (i >= 0 && bytes[i] == 0)
-            --i;
-        return Arrays.copyOf(bytes, i );
-    }
+//    static byte[] trim(byte[] bytes) {
+//        int i = bytes.length - 1;
+//        while (i >= 0 && bytes[i] == 0)
+//            --i;
+//        return Arrays.copyOf(bytes, i );
+//    }
 
     public static String keyToUTF8(String fileName) throws IOException {
         System.out.println("Symmetric.key string for AES En(): ");
@@ -75,7 +76,7 @@ public class Receiver {
 
             while (line != null) {
                 sb.append(line);
-                sb.append("\n");
+                //sb.append("\n");
                 line = br.readLine();
             }
             symmetricKey = sb.toString();
@@ -85,7 +86,7 @@ public class Receiver {
             br.close();
             System.out.println("128-bit UTF-8 encoding of Symmetric.key for AES: ");
             symmetricBytes = symmetricKey.getBytes("UTF-8");
-            symmetricBytes = trim(symmetricBytes);
+            //symmetricBytes = trim(symmetricBytes);
             for (byte x: symmetricBytes) {
                 System.out.print(x + " ");
             }
@@ -93,90 +94,95 @@ public class Receiver {
         }
     }
 
-    public static byte[] aesDecrypt(String encryptedFile) throws Exception {
+    public static void aesDecrypt(String encryptedFile) throws Exception {
         // Reading file as bytes
-        byte[] cipherBytes = fileStringToByteArray(encryptedFile);
+        BufferedInputStream encryptedIn = new BufferedInputStream(new FileInputStream(encryptedFile));
+        byte[] cipherBytes = encryptedIn.readAllBytes();
+        encryptedIn.close();
+
         System.out.println("file: " + cipherBytes);
+        System.out.print("cipherBytes:  \n");
+        for (int i = 0, j = 0; i < cipherBytes.length; i++, j++) {
+            System.out.format("%02X ", cipherBytes[i]);
+            if (j >= 15) {
+                System.out.println("");
+                j = -1;
+            }
+        }
         byte[] iv = new byte[16];
-        String IV = "AAAAAAAAAAAAAAAA"; // do not need for AES/ECB/PKCS5Padding mode
+        // String IV = "AAAAAAAAAAAAAAAA"; // do not need for AES/ECB/PKCS5Padding mode
         //Cipher cipher = Cipher.getInstance("AES/CBC/NoPadding", "SunJCE");
         //Cipher cipher = Cipher.getInstance("AES/CFB8/NoPadding", "SunJCE");
         Cipher cipher = Cipher.getInstance("AES/CFB/NoPadding", "SunJCE");
         SecretKeySpec key = new SecretKeySpec(symmetricBytes, "AES");
         cipher.init(Cipher.DECRYPT_MODE, key,new IvParameterSpec(iv));
-        PrintWriter ds_out = new PrintWriter("message.ds-out");
+        BufferedOutputStream dsMsg_out = new BufferedOutputStream(new FileOutputStream("message.ds-msg"));
         byte[] plainBytes = cipher.doFinal(cipherBytes);
 
-        //System.out.println(cipherText);
-        System.out.print("cipherBytes:  \n");
-        for (int i = 0, j = 0; i < cipherBytes.length; i++, j++) {
-            System.out.format("%02X ", cipherBytes[i]);
-            //ds_out.format("%02X ", cipherBytes[i]);
-            if (j >= 15) {
-                System.out.println("");
-                j = -1;
-            }
-        }
+        // //System.out.println(cipherText);
+        // System.out.print("cipherBytes:  \n");
+        // for (int i = 0, j = 0; i < cipherBytes.length; i++, j++) {
+        //     System.out.format("%02X ", cipherBytes[i]);
+        //     if (j >= 15) {
+        //         System.out.println("");
+        //         j = -1;
+        //     }
+        // }
 
-        String plainText = new String(plainBytes);
+        //String plainText = new String(plainBytes);
 
-        System.out.println("\nDecrypted bytes: \n" + plainText);
-        ds_out.format(plainText);
-        ds_out.close();
-        return plainBytes;
+        System.out.println("\nDecrypted bytes: " + plainBytes);
+         System.out.print("plainBytes:  \n");
+         for (int i = 0, j = 0; i < plainBytes.length; i++, j++) {
+             System.out.format("%02X ", plainBytes[i]);
+             if (j >= 15) {
+                 System.out.println("");
+                 j = -1;
+             }
+         }
+        dsMsg_out.write(plainBytes);
+        dsMsg_out.close();
     }
 
-    public static byte[] parseDecryptedMsg(String dsMsgFname, String msgOutFname) throws IOException {
+    public static byte[] parseDecryptedMsg(String dsMsgFname, String msgOutFname) throws Exception {
         // Single byte = "XX ", 3 chararacters * 128 [- final space]
-        int dsSize = 128 * 3;
+        int dsSize = 128;
 
-        // Read file as string
-        // Path dsMsgPath = Paths.get(dsMsgFname);
-        BufferedReader br = new BufferedReader(new FileReader(dsMsgFname));
-        StringBuilder sb = new StringBuilder();
-        String line = br.readLine();
-        sb.append(line);
-        String ds_msg = sb.toString();
+        // Read in file
+        BufferedInputStream dsMsgIn = new BufferedInputStream(new FileInputStream(dsMsgFname));
+        byte[] dsMsg = dsMsgIn.readAllBytes();
+        dsMsgIn.close();
 
-        System.out.println("****");
-        System.out.println(ds_msg);
-        System.out.println("****");
-        // String ds_msg = new String(Files.readString(dsMsgPath));
 
-        // Get first 128 bytes (without space) as string
-        String digSigString = ds_msg.substring(0, dsSize - 1);
-        // Get remaining bytes as message less final character (extra '\n')
-        String messageString = ds_msg.substring(dsSize, ds_msg.length());
-
-        // Convert digital signature string to bytes
-        byte[] digSigBytes = stringToByteArray(digSigString);
+        // Get first 128 bytes
+        digSig = Arrays.copyOfRange(dsMsg, 0, dsSize);
+        // Get remaining bytes as message
+        byte[] message = Arrays.copyOfRange(dsMsg, dsSize, dsMsg.length);
 
         // Write out message to user specified file
-        PrintWriter msg_out = new PrintWriter(msgOutFname);
-        msg_out.format(messageString);
+        BufferedOutputStream msg_out = new BufferedOutputStream(new FileOutputStream(msgOutFname));
+        msg_out.write(message);
         msg_out.close();
 
         // Return digital signature in bytes
-        return digSigBytes;
+        return digSig;
     }
 
-    public static void rsaDecrypt(byte[] digSig) throws Exception {
-
+    public static void rsaDecrypt(byte[] digSig1) throws Exception {
         Cipher cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
         cipher.init(Cipher.DECRYPT_MODE, XpubKey);
-        byte[] digDigest = cipher.doFinal(digSig);
 
-        PrintWriter dd_out = new PrintWriter("message.dd");
+        do {
+            byte[] digSigFirst128 = Arrays.copyOfRange(digSig1, 0, 128);
+            digDigest = cipher.update(digSigFirst128);
+            digSig1 = Arrays.copyOfRange(digSig1, 128, digSig1.length);
+        } while (digSig1.length > 128);
 
-        System.out.println("Digital digest received:\n");
-        for (int i = 0, j = 0; i < digDigest.length; i++, j++) {
-            System.out.format("%02X ", digDigest[i]);
-            dd_out.format("%02X ", digDigest[i]);
-            if (j >= 15) {
-                System.out.println("");
-                j = -1;
-            }
-        }
+        digDigest = cipher.doFinal(digSig1);
+
+        BufferedOutputStream dd_out = new BufferedOutputStream(new FileOutputStream("message.dd"));
+
+        dd_out.write(digDigest);
         dd_out.close();
         System.out.println("");
     }
@@ -193,8 +199,15 @@ public class Receiver {
         md = in.getMessageDigest();
         in.close();
 
+
+        System.out.println("Digital digest received:\n");
+        BufferedInputStream receivedDigest = new BufferedInputStream(new FileInputStream(ddFile));
+        byte[] digestReceived = receivedDigest.readAllBytes();
+        receivedDigest.close();
+        printBytes(digestReceived);
+
         byte[] hashCreated = md.digest();
-        byte[] digestReceived = fileStringToByteArray(ddFile);
+        //byte[] digestReceived = fileStringToByteArray(ddFile);
 
         System.out.println("Hash of decrypted message:\n");
         printBytes(hashCreated);
@@ -215,24 +228,6 @@ public class Receiver {
                 j = -1;
             }
         }
-    }
-
-    public static byte[] fileStringToByteArray(String fname) throws IOException {
-        BufferedReader br = new BufferedReader(new FileReader(fname));
-        String str = br.readLine();
-
-        return stringToByteArray(str);
-    }
-
-    public static byte[] stringToByteArray(String str) throws IOException {
-        String[] splitText = str.split("\\s+");
-        int byteInt;
-        byte[] byteArr = new byte[splitText.length];
-        for (int i = 0; i < splitText.length; i++) {
-            byteInt = Integer.parseInt(splitText[i], 16);
-            byteArr[i] = (byte) byteInt;
-        }
-        return byteArr;
     }
 
     public static PublicKey readPubKeyFromFile(String keyFileName) throws IOException {
